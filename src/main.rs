@@ -1,5 +1,6 @@
 use std::io::{self, Write};
 use std::env;
+use std::process::Command;
 
 fn main() {
     loop {
@@ -16,18 +17,19 @@ fn main() {
             continue;
         }
 
-        let args = &parts[1..];
+        let args: Vec<String> = expand(&parts[1..]);
         match parts[0] {
             "exit" => break,
-            "cd" => builtin_cd(args),
-            "ls" => builtin_ls(args),
+            "cd" => builtin_cd(&args),
+            "ls" => builtin_ls(&args),
             "pwd" => println!("{}", env::current_dir().unwrap().display()),
-            cmd => println!("unknown command: {}", cmd),
+            cmd => run_external(cmd, &args),
         }
     }
 }
 
-fn builtin_cd(args: &[&str]) {
+// builtin cd command
+fn builtin_cd(args: &[String]) {
     let target = match args.first() {
         Some(path) => path.to_string(),
         None => match env::var("HOME") {
@@ -44,8 +46,9 @@ fn builtin_cd(args: &[&str]) {
     }
 }
 
-fn builtin_ls(args: &[&str]) {
-    let target = args.first().copied().unwrap_or(".");
+// builtin ls command
+fn builtin_ls(args: &[String]) {
+    let target = args.first().map(|s| s.as_str()).unwrap_or(".");
 
     let entries = match std::fs::read_dir(target) {
         Ok(entries) => entries,
@@ -67,4 +70,37 @@ fn builtin_ls(args: &[&str]) {
     for name in names {
         println!("{}", name);
     }
+}
+
+// run external commands
+fn run_external(cmd: &str, args: &[String]) {
+    match Command::new(cmd).args(args).status() {
+        Ok(_) => {}
+        Err(e) => eprintln!("{}: {}", cmd, e),
+    }
+}
+
+// expand ~, . and *
+fn expand(args: &[&str]) -> Vec<String> {
+    let mut result: Vec<String> = Vec::new();
+
+    for arg in args {
+        if *arg == "~" || arg.starts_with("~/") {
+            match env::var("HOME") {
+                Ok(home) => {
+                    if *arg == "~" {
+                        result.push(home);
+                    } else {
+                        let rest = &arg[1..];
+                        result.push(format!("{}{}", home, rest));
+                    }
+                }
+                Err(_) => result.push(arg.to_string()),
+            }
+        } else {
+            result.push(arg.to_string());
+        }
+    }
+
+    result
 }
