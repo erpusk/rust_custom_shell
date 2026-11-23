@@ -97,10 +97,53 @@ fn expand(args: &[&str]) -> Vec<String> {
                 }
                 Err(_) => result.push(arg.to_string()),
             }
+        } else if *arg == "."{
+            match env::current_dir() {
+                Ok(dir) => result.push(dir.display().to_string()),
+                Err(_) => result.push(arg.to_string()),
+            }
+        } else if arg.contains('*') {
+            result.extend(expand_glob(arg));
         } else {
             result.push(arg.to_string());
         }
     }
 
     result
+}
+
+fn expand_glob(pattern: &str) -> Vec<String> {
+    let (prefix, suffix) = match pattern.split_once('*') {
+        Some(parts) => parts,
+        None => return vec![pattern.to_string()],
+    };
+
+    let entries = match std::fs::read_dir(".") {
+        Ok(entries) => entries,
+        Err(_) => return vec![pattern.to_string()],
+    };
+
+    let mut matches: Vec<String> = Vec::new();
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let name = entry.file_name().to_string_lossy().to_string();
+
+            if name.starts_with('.') && !prefix.starts_with('.') {
+                continue;
+            }
+
+            if name.len() >= prefix.len() + suffix.len()
+                && name.starts_with(prefix)
+                && name.ends_with(suffix) 
+            {
+                matches.push(name);
+            }
+        }
+    }
+    if matches.is_empty() {
+        return vec![pattern.to_string()];
+    }
+
+    matches.sort();
+    matches
 }
